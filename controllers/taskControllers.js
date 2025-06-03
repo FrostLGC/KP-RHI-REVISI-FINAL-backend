@@ -350,6 +350,22 @@ const updateTask = async (req, res) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    // Authorization: allow if superadmin, or assigned user, or admin
+    const isAssigned = task.assignedTo.some(
+      (userId) => userId.toString() === req.user._id.toString()
+    );
+    if (
+      !(
+        req.user.role === "superadmin" ||
+        isAssigned ||
+        req.user.role === "admin"
+      )
+    ) {
+      return res.status(403).json({
+        message: "Access denied: you didn't create this task",
+      });
+    }
+
     // Validate assigned users exist if provided
     if (req.body.assignedTo) {
       if (!Array.isArray(req.body.assignedTo)) {
@@ -478,21 +494,14 @@ const updateTaskChecklist = async (req, res) => {
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
-    // Authorization: allow if superadmin, or assigned user, or admin
+
+    // Authorization checks
+    const isTaskCreator =
+      task.assignedBy.toString() === req.user._id.toString();
     const isAssigned = task.assignedTo.some(
       (userId) => userId.toString() === req.user._id.toString()
     );
-    if (
-      !(
-        req.user.role === "superadmin" ||
-        isAssigned ||
-        req.user.role === "admin"
-      )
-    ) {
-      return res
-        .status(403)
-        .json({ message: "You are not authorized to update this task" });
-    }
+    const isSuperAdmin = req.user.role === "superadmin";
 
     // Prevent updating checklist if task is rejected
     if (task.status === "Rejected") {
@@ -501,6 +510,62 @@ const updateTaskChecklist = async (req, res) => {
         .json({ message: "Cannot update checklist of a rejected task" });
     }
 
+    // Check what type of operation is being performed
+    const isAddingNewItems = todoChecklist.length > task.todoChecklist.length;
+    const isRemovingItems = todoChecklist.length < task.todoChecklist.length;
+    const isOnlyUpdatingExisting =
+      todoChecklist.length === task.todoChecklist.length;
+
+    // Authorization based on operation type:
+
+    // 1. Adding new todo items - Only task creator or superadmin
+    if (isAddingNewItems) {
+      if (!(isSuperAdmin || isTaskCreator)) {
+        return res.status(403).json({
+          message: "Only the task creator or superadmin can add new todo items",
+        });
+      }
+    }
+
+    // 2. Removing items - Only task creator or superadmin
+    else if (isRemovingItems) {
+      if (!(isSuperAdmin || isTaskCreator)) {
+        return res.status(403).json({
+          message: "Only the task creator or superadmin can remove todo items",
+        });
+      }
+    }
+
+    // 3. Updating existing items - Task creator, superadmin, or assigned users
+    else if (isOnlyUpdatingExisting) {
+      if (!(isSuperAdmin || isTaskCreator || isAssigned)) {
+        return res.status(403).json({
+          message: "You are not authorized to update this task checklist",
+        });
+      }
+
+      // Additional validation for assigned users: they can only change completion status
+      if (isAssigned && !isTaskCreator && !isSuperAdmin) {
+        for (let i = 0; i < todoChecklist.length; i++) {
+          const newItem = todoChecklist[i];
+          const originalItem = task.todoChecklist[i];
+
+          // Check if anything other than 'completed' status was changed
+          if (
+            newItem.text !== originalItem.text ||
+            (newItem.description &&
+              newItem.description !== originalItem.description)
+          ) {
+            return res.status(403).json({
+              message:
+                "You can only mark todo items as complete/incomplete, not edit their content",
+            });
+          }
+        }
+      }
+    }
+
+    // Update the checklist
     task.todoChecklist = todoChecklist;
     task.updatedBy = req.user._id;
 
@@ -510,7 +575,7 @@ const updateTaskChecklist = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    // auto update progress
+    // Auto update progress
     const completedCount = todoChecklist.filter(
       (item) => item.completed
     ).length;
@@ -518,7 +583,7 @@ const updateTaskChecklist = async (req, res) => {
     task.progress =
       totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0;
 
-    // auto mark task as completed if all items are completed
+    // Auto mark task as completed if all items are completed
     if (task.progress === 100) {
       task.status = "Completed";
     } else if (task.progress > 0) {
