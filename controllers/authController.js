@@ -1,6 +1,11 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { cloudinary, extractPublicId } = require("../config/cloudinary");
+
+// Define this once at the top
+const DEFAULT_PROFILE_IMAGE =
+  "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg";
 
 // mengenerate jwt token
 const generateToken = (userId) => {
@@ -41,7 +46,10 @@ const registerUser = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      profileImageUrl: profileImageUrl && profileImageUrl.trim() !== "" ? profileImageUrl : "http://localhost:5000/uploads/1746817107938-User.jpg",
+      profileImageUrl:
+        profileImageUrl && profileImageUrl.trim() !== ""
+          ? profileImageUrl
+          : "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg",
       role,
       position,
     });
@@ -115,17 +123,28 @@ const getUserProfile = async (req, res) => {
 // @route PUT /api/auth/profile
 // @access Private required jwt
 
+
 const updateUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    // Delete old Cloudinary image only if it's not the default and is a custom upload
+    if (
+      req.body.profileImageUrl &&
+      user.profileImageUrl &&
+      user.profileImageUrl !== DEFAULT_PROFILE_IMAGE &&
+      user.profileImageUrl.includes("cloudinary")
+    ) {
+      const publicId = extractPublicId(user.profileImageUrl);
+      if (publicId) await cloudinary.uploader.destroy(publicId);
     }
 
+    // Update user
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
     user.position = req.body.position || user.position;
+    user.profileImageUrl = req.body.profileImageUrl || user.profileImageUrl; // Changed from req.file?.cloudinaryUrl
 
     if (req.body.password) {
       const salt = await bcrypt.genSalt(10);
@@ -133,6 +152,7 @@ const updateUserProfile = async (req, res) => {
     }
 
     const updatedUser = await user.save();
+
     res.json({
       _id: updatedUser._id,
       name: updatedUser.name,
@@ -147,4 +167,52 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getUserProfile, updateUserProfile };
+const updateProfilePhoto = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!req.file?.cloudinaryUrl) {
+      return res.status(400).json({ message: "No image provided" });
+    }
+
+    // Check if current image is not the default before deleting
+    const DEFAULT_PROFILE_IMAGE =
+      "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg";
+
+    if (
+      user.profileImageUrl &&
+      user.profileImageUrl !== DEFAULT_PROFILE_IMAGE &&
+      user.profileImageUrl.includes("cloudinary")
+    ) {
+      const publicId = extractPublicId(user.profileImageUrl);
+      if (publicId) await cloudinary.uploader.destroy(publicId);
+    }
+
+    user.profileImageUrl = req.file.cloudinaryUrl;
+    await user.save();
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      profileImageUrl: user.profileImageUrl,
+      role: user.role,
+      position: user.position,
+      token: generateToken(user._id),
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error updating profile photo",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = {
+  registerUser,
+  loginUser,
+  getUserProfile,
+  updateUserProfile,
+  updateProfilePhoto,
+};
