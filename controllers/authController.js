@@ -5,7 +5,7 @@ const { cloudinary, extractPublicId } = require("../config/cloudinary");
 
 // Define this once at the top
 const DEFAULT_PROFILE_IMAGE =
-  "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg";
+  "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748965541/rmxfq5klt633rfqqtwke_msqbse.jpg";
 
 // mengenerate jwt token
 const generateToken = (userId) => {
@@ -49,7 +49,7 @@ const registerUser = async (req, res) => {
       profileImageUrl:
         profileImageUrl && profileImageUrl.trim() !== ""
           ? profileImageUrl
-          : "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg",
+          : "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748965541/rmxfq5klt633rfqqtwke_msqbse.jpg",
       role,
       position,
     });
@@ -178,7 +178,7 @@ const updateProfilePhoto = async (req, res) => {
 
     // Check if current image is not the default before deleting
     const DEFAULT_PROFILE_IMAGE =
-      "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748947330/project-management/rmxfq5klt633rfqqtwke.jpg";
+      "https://res.cloudinary.com/dpehq6hqg/image/upload/v1748965541/rmxfq5klt633rfqqtwke_msqbse.jpg";
 
     if (
       user.profileImageUrl &&
